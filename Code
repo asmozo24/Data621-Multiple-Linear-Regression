@@ -1,0 +1,447 @@
+```{r load-packages, results='hide',warning=FALSE, message=FALSE, echo=FALSE}
+
+#library(tidyverse) #loading all library needed for this assignment
+#remove.packages(tidyverse)
+#library(openintro)
+#library(lahman) #database for baseball
+library(caret)
+library(knitr)
+#library(markdown)
+#library(rmarkdown)
+library(dplyr)
+library(tidyr)
+library(naniar)
+library(reshape)
+library(ggplot2)
+library(qqplotr)
+library(stats)
+library(statsr)
+library(GGally)
+library(pdftools)
+library(correlation)
+library(Metrics)
+library(e1071)
+library(rocc)
+library(pROC)
+library(plm)
+library(car)
+library(VIF)
+library(MASS)
+data(lpsa)
+library(AICcmodavg)
+library(gridExtra)
+library(ggpubr)
+#library(glmulti)
+```
+
+
+
+```{r, echo=FALSE}
+
+variable_names1 <- read.csv("https://raw.githubusercontent.com/asmozo24/Data621-Multiple-Linear-Regression/main/Insurance_variables_names.csv", stringsAsFactors=FALSE)
+variable_names1 %>%
+      head(28)%>%
+      kable()
+
+```   
+
+
+```{r, echo=FALSE}
+
+insuranceT_df <- read.csv("https://raw.githubusercontent.com/asmozo24/Data621-Multiple-Linear-Regression/main/insurance_training_data%20(1).csv", stringsAsFactors=FALSE)
+insuranceE_df <- read.csv("https://raw.githubusercontent.com/asmozo24/Data621-Multiple-Linear-Regression/main/insurance-evaluation-data%20(1).csv", stringsAsFactors=FALSE)
+str(insuranceT_df)
+#glimpse(insuranceT_df)
+#dim(insuranceT_df) 
+insuranceT_df %>%
+      head(05)%>%
+      kable()
+#view(training_df)
+summary(insuranceT_df)
+```
+
+
+```{r, echo=FALSE}
+
+
+View(insuranceT_df)
+#creating a function to removed unncessary char and changing data type
+
+stripped <- function(x){
+  x <-sub("\\$", "", x)
+  x<- sub(",", "", x)
+  x<- as.numeric(x)
+  return (x)
+}
+# huummm I think we can improve this change type with a fuction
+
+insuranceT_df$INCOME <- stripped(insuranceT_df$INCOME)
+insuranceT_df$HOME_VAL <- stripped(insuranceT_df$HOME_VAL)
+insuranceT_df$BLUEBOOK <- stripped(insuranceT_df$BLUEBOOK)
+insuranceT_df$OLDCLAIM <- stripped(insuranceT_df$OLDCLAIM)
+
+insuranceE_df$INCOME <- stripped(insuranceE_df$INCOME)
+insuranceE_df$HOME_VAL <- stripped(insuranceE_df$HOME_VAL)
+insuranceE_df$BLUEBOOK <- stripped(insuranceE_df$BLUEBOOK)
+insuranceE_df$OLDCLAIM <- stripped(insuranceE_df$OLDCLAIM)
+
+View(insuranceT_df)
+insuranceT_df %>%
+      head(05)%>%
+      kable()
+
+```
+
+```{r, echo=FALSE}
+# changing data type from int to factor
+
+insuranceT_df1 <-insuranceT_df
+insuranceT_df1$TARGET_FLAG <- as.factor(insuranceT_df1$TARGET_FLAG)
+#insuranceT_df1$TARGET_AMT <- as.factor(insuranceT_df1$TARGET_AMT)
+
+
+#evaluation_df1 <- evaluation_df
+#evaluation_df1$chas <-as.factor(evaluation_df$chas)
+#evaluation_df1$target = NA
+#evaluation_df1$target <-as.factor(evaluation_df1$target)
+
+
+#str(training_df)
+
+misValues1 <- sum(is.na(insuranceT_df1))# Returning the column names with missing values
+#column_na1 <- colnames(insuranceT_df1)[ apply(insuranceT_df1, 2, anyNA) ] # 2 is dimension(dim())
+
+cat("The total of missing values is : ", misValues1)
+
+```
+
+```{r, echo=FALSE}
+cat("\nVariable distribution of missing 'NA' is: ")
+#column_na1
+
+missing.values <- function(df){
+    df %>%
+    gather(key = "variables", value = "val") %>%
+    mutate(is.missing = is.na(val)) %>%
+    group_by(variables, is.missing) %>%
+    summarise(number.missing = n()) %>%
+    filter(is.missing==T) %>%
+    dplyr::select(-is.missing) %>%
+    arrange(desc(number.missing)) 
+}
+
+missing.values(insuranceT_df1)%>% kable()
+#missing.values(evaluation_df) %>% kable()
+```
+
+```{r, echo=FALSE}
+# plot missing values
+ missing.values(insuranceT_df) %>%
+   ggplot() +
+     geom_bar(aes(x=variables, y=number.missing), stat = 'identity', col='blue') +
+     labs(x='variables', y="number of missing values", title='Number of missing values') +
+   theme(axis.text.x = element_text(angle = 100, hjust = 0.2))
+
+#Another way of visualizing missing value
+#vis_miss(training_df)
+gg_miss_var(insuranceT_df1, show_pct = TRUE) + labs(y = "Missing Values in % to total record")+ theme()
+#colSums(is.na(insuranceT_df1))%>% kable()
+#cat("\n Even more, the table below shows the total number of missing values per variable")
+#apply(is.na(insuranceT_df1), 2, sum)
+
+
+```
+
+```{r, echo=FALSE}
+library(Hmisc)
+
+sum(is.na(insuranceT_df1$AGE))
+insuranceT_df2 <- insuranceT_df1%>%
+  drop_na(AGE)
+
+
+cat("\nLet's see the new observation(it should be 1876-6=1870")
+sum(is.na(insuranceT_df2))
+cat("\nLet's impute missing values in (CAR_AGE, HOME_VAL, YOJ, INCOME) with median") #CAR_AGE, HOME_VAL, YOJ, INCOME
+
+
+  insuranceT_df2$CAR_AGE <- impute(insuranceT_df2$CAR_AGE, median)
+  insuranceT_df2$HOME_VAL <- impute(insuranceT_df2$HOME_VAL, median)
+  insuranceT_df2$YOJ <- impute(insuranceT_df2$YOJ, median)
+  insuranceT_df2$INCOME <- impute(insuranceT_df2$INCOME , median)
+
+#impute_arg <- aregImpute(~ CAR_AGE+HOME_VAL+YOJ+INCOME, data = insuranceT_df2, n.impute = 4)
+#impute(insuranceT_df2$CAR_AGE, median)
+#impute(insuranceT_df2$HOME_VAL)
+#impute(insuranceT_df2$YOJ)
+#impute(insuranceT_df2$INCOME)
+
+cat("\nLet's see the effect of imputing missing values on the total observations(it should be 0")
+sum(is.na(insuranceT_df2))
+
+```
+
+
+```{r, echo=FALSE}
+
+insuranceT_df3 <- subset(insuranceT_df2 , select =c(-INDEX))
+#glimpse(insuranceT_df3)
+
+ggplot(insuranceT_df3, aes(x = INCOME, fill = TARGET_FLAG)) +
+  geom_histogram(position = "identity", alpha = 0.8, bins = 40)
+
+
+ggplot(insuranceT_df3, aes(x = AGE, fill = TARGET_FLAG)) +
+  geom_histogram(position = "identity", alpha = 0.8, bins = 40)
+
+
+ggplot(insuranceT_df3, aes(x = CAR_AGE, fill = TARGET_FLAG)) +
+  geom_histogram(position = "identity", alpha = 0.8, bins = 40)
+
+ggplot(insuranceT_df3, aes(x = TRAVTIME, fill = TARGET_FLAG)) +
+  geom_histogram(position = "identity", alpha = 0.8, bins = 50)
+
+# ggplot(insuranceT_df3) + 
+#   geom_rect(aes(xmin=min('CAR_TYPE'), xmax=max(insuranceT_df3$CAR_TYPE), ymin=0, ymax=1, fill=TARGET_FLAG), colour="black") +
+#   theme(axis.text.y=element_blank(), axis.ticks.y=element_blank()) + labs(x="SEX")
+
+# ggplot(insuranceT_df3,aes(x = CAR_TYPE, y=as.integer(TARGET_FLAG), fill = TARGET_FLAG)) + 
+#   geom_bar(position = "dogge",stat = "identity") +
+#   scale_y_continuous(labels = scales::percent)
+
+#a <- insuranceT_df3 %>%
+#  count(CAR_TYPE)
+  
+  # ggplot(insuranceT_df3, aes(CAR_TYPE, n))+
+  # geom_bar(stat = "identity", aes(fill =TARGET_FLAG), position = "dodge") +
+  # xlab("Cars Type") + ylab("Count") +
+  # ggtitle("Cars Type Distribution per crash") +
+  # theme_bw()
+
+# ggplot(insuranceT_df3,aes(x = CAR_TYPE, y=as.integer(count(insuranceT_df3$CAR_TYPE)$n), fill = TARGET_FLAG)) + 
+#   geom_bar(position = "dodge",stat = "identity") +
+#   scale_y_continuous(labels = scales::percent)
+
+var_dis <- function(df){
+for(i in c( "EDUCATION","CAR_TYPE","JOB", "PARENT1", "SEX", "CAR_USE")){
+tables <- data.frame(table(df [,i]))
+colnames(tables) <- c("value","n")
+
+plots <- print(ggplot(tables,
+aes(value,n*100/8161)) +
+geom_bar(stat = "identity",col="gray",fill="blue") +
+xlab("") +
+ylab("Percentage Distribution") +
+ggtitle(i) +
+theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+}
+  return (plots)
+}
+
+
+par(mfrow = c(3,3))
+var_dis(insuranceT_df3)
+#ggarrange( var_dis(insuranceT_df3), ncol = 3, nrow = 3)
+
+
+
+```
+
+
+```{r, echo=FALSE}
+insuranceT_df3
+
+```
+
+```{r, echo=FALSE}
+
+#install.packages("devtools")
+#devtools::install_github("cardiomoon/ggiraphExtra")
+
+#require(ggiraph)
+#require(ggiraphExtra)
+#require(plyr)
+
+#ggPredict(insuranceT_df2, colorAsFactor = TRUE,interactive=TRUE) # se = TRUE
+#termplot(lm1)
+
+ggplot(insuranceT_df3, aes(x =TRAVTIME , y = TARGET_AMT)) + geom_point() +
+             geom_smooth(method="lm", se=FALSE) + facet_wrap(~ SEX)
+
+
+```
+
+
+```{r, echo=FALSE}
+
+insuranceT_df3a <- subset(insuranceT_df3 , select =c(-TARGET_FLAG))
+
+lm1 <- lm(TARGET_AMT ~., data = insuranceT_df3a)
+
+summary(lm1)
+
+#glimpse(insuranceT_df3a)
+
+```
+```{r, echo=FALSE}
+
+#plot(TARGET_AMT~fitted(lm1), data = insuranceT_df3a)
+plot(lm1)
+
+```
+
+```{r, echo=FALSE}
+
+insuranceT_df3b <- subset(insuranceT_df3a , select =c(-HOMEKIDS,-AGE,-YOJ,-JOB, -BLUEBOOK, -HOME_VAL, -RED_CAR, -OLDCLAIM, -EDUCATION
+))
+insuranceT_df3b
+lm2 <- lm(TARGET_AMT ~. , data = insuranceT_df3b)
+#lm2_method <-step(lm2) #step(lm2) #stepAIC()
+summary(lm2)
+
+```
+
+```{r, echo=FALSE}
+
+require(leaps)
+
+lm3 <- summary(regsubsets(TARGET_AMT ~., data = insuranceT_df3b, nbest = 1))
+lm3
+with(lm3, data.frame(rsq, adjr2, cp, rss, bic, outmat))
+
+```
+
+```{r, echo=FALSE}
+
+insuranceT_df3c <- subset(insuranceT_df3 , select =c(-TARGET_AMT))
+# Training the model
+glm1 <- glm(TARGET_FLAG ~ ., family = binomial(), insuranceT_df3c)
+#checking the model
+summary(glm1)
+
+
+
+```
+
+```{r, echo=FALSE}
+
+insuranceT_df3c1 <- subset(insuranceT_df3c , select =c(-HOMEKIDS,-AGE,-YOJ,-JOB, -SEX, -RED_CAR, -EDUCATION))
+#insuranceT_df3c <- insuranceT_df3 %>%
+#  dplyr::select(-HOMEKIDS,-AGE,-YOJ,-JOB, -SEX, -RED_CAR, -EDUCATION)
+
+# Training the model
+glm2 <- glm(TARGET_FLAG ~ ., family = binomial(), insuranceT_df3c1)
+#checking the model
+summary(glm2)
+
+
+```
+
+
+
+```{r, echo=FALSE}
+
+# if(Sys.getenv("JAVA_HOME")!=""){
+#     Sys.setenv(JAVA_HOME="")
+# }
+# 
+# Sys.setenv(JAVA_HOME = "C:/Program Files/Java/jdk1.8.0_101/")
+# 
+# system("java -version")
+# 
+# library(rJava)
+# 
+# install.packages("glmulti")
+# library(glmulti)
+
+#gml2 <- glm(TARGET_FLAG ~ ., family = binomial(), insuranceT_df3c1)
+
+
+# glmulti1 <- glmulti(TARGET_FLAG ~., data=insuranceT_df3c,
+#                level=1, fitfunction=rma.glmulti, crit="aic", confsetsize=12, plotty = F)
+# summary(glmulti1)
+
+glm3 <- step(glm2)
+summary(glm3)
+
+
+
+```
+
+```{r, echo=FALSE}
+
+insuranceT_df3_final <-  insuranceT_df3a %>%
+  dplyr::select(TARGET_AMT, MVR_PTS,URBANICITY, CAR_USE, MSTATUS, INCOME, KIDSDRIV )  
+
+summary(lm(TARGET_AMT ~., data = insuranceT_df3_final))
+
+
+#anova(lm1, lm2, lm3)
+
+# lm3_sum <- summary(lm3)
+# data.frame(
+#   Adj.R2 = which.max(lm3_sum$adjr2),
+#   CP = which.min(lm3_sum$cp),
+#   BIC = which.min(lm3_sum$bic)
+#)
+
+```
+
+
+```{r, echo=FALSE}
+glm1$aic
+glm2$aic
+glm3$aic
+
+```
+
+
+```{r, echo=FALSE}
+
+library(prediction)
+#glm2 <- glm(TARGET_FLAG ~ ., family = binomial(), insuranceT_df3c1)
+
+set.seed(3121)
+# Splitting the data into train and test
+index <- createDataPartition((insuranceT_df3c$TARGET_FLAG), p = .5, list = FALSE)
+trainB <- insuranceT_df3c[index, ]
+trainb <- insuranceT_df3c[-index, ]
+trainb1 <- trainb
+
+glm1a <- glm(TARGET_FLAG ~ ., family = binomial(), trainB)
+glm3a <- step(glm1a)
+# 
+# evaluation_Predi <- predict(glm3, type = "response", newdata = trainB)
+# roc1 <- prediction(evaluation_Predi, trainB$TARGET_FLAG)
+# roc1a <- performance(roc1, "tpr", "fpr")
+# plot(roc1a, colorize=TRUE, print.cutoffs.at=seq(0.1,by=0.1))
+# 
+predi <- predict(glm1a, newdata = trainb1, type = "response")
+y_predi_num <- ifelse(predi > 0.5, 1, 0)
+y_pred <- factor(y_predi_num, levels=c(0, 1))
+y_act <- trainb1$TARGET_FLAG
+ 
+
+mean(y_pred==y_act) 
+
+# predi <- predict(step(glm1a), newdata = trainb1, type = "response")
+# y_predi_num <- ifelse(predi > 0.5, 1, 0)
+# y_pred <- factor(y_predi_num, levels=c(0, 1))
+# y_act <- trainb1$TARGET_FLAG
+# mean(y_pred==y_act) 
+
+
+```
+
+### References
+
+https://www.scribbr.com/statistics/multiple-linear-regression/
+
+https://bookdown.org/chua/ber642_advanced_regression/binary-logistic-regression.html
+
+https://www.jstatsoft.org/article/view/v034i12
+
+http://r-statistics.co/Missing-Value-Treatment-With-R.html
+
+https://andyreagan.github.io/teaching/2018/09-SDS-291/lectures/14_modelselection.pdf
